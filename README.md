@@ -10,3 +10,6 @@ Fonctionnalités:
   * Changement automatique de l'heure été/hiver
   * Minuterie journalière avec pwm en fonction du lever/coucher d'une position voulu
   * Mesure la temperature avec 2 sondes DS18B20
+
+A ajouter:
+  * Arrosage d'une certaine quantité d'eau, déclecnher en fonction de l'hygrométrie du sol
