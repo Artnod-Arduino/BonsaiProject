@@ -120,7 +120,7 @@ void printLight()
   int heureOn = (lordOn - minuteOn) /60;
   int lordOff = light.getValue(LORDTIMER_OFF);
   int minuteOff = lordOff % 60;
-  int heureOff = (lordOff - minuteOn) /60;
+  int heureOff = (lordOff - minuteOff) /60;
   Serial.print("pwm: ");
   Serial.print(light.getPwm());
   Serial.print(" - on: ");
