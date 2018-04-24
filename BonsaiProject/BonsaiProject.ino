@@ -18,8 +18,8 @@ RTC_DS1307 RTC;               // Instance DS1307 RTC
 DateTime now;                 // Variable pour recuperer l'heure de l'horloge
 int DST = 0;                  // Heure été/hiver
 void changeDST(void)          // Changement automatique de l'heure été / hiver
-{
-  if (now.dayOfTheWeek() == 0 && now.month() == 3 && now.day() >= 25 && now.day() <= 31 && now.hour() == 2 && now.minute() == 0 && now.second() == 0 && DST == 0)
+{  
+  if (now.dayOfTheWeek() == 0 && now.month() == 3 && now.day() >= 25 && now.day() <= 31 && now.hour() >= 2 && now.minute() >= 0 && now.second() >= 0 && DST == 0)
   {
     RTC.adjust(DateTime(now.year(), now.month(), now.day(), now.hour() + 1, now.minute(), now.second()));
     DST = 1;
@@ -78,12 +78,12 @@ void loop ()
 {
   // ***************** Recuperation de l'heure ********************************
   now = RTC.now(); //get time from RTC
-  changeDST(); // changement automatique de l'heure été / hiver
+  
 
   // ***************** Running every sec ********************************
   if (now.second() != lastSec)
   {
-    sensors.requestTemperatures();
+    changeDST(); // changement automatique de l'heure été / hiver
     insideTemp = sensors.getTempC(insideThermometer);
     outsideTemp = sensors.getTempC(outsideThermometer);
     light.run(now);
