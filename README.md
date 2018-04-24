@@ -12,4 +12,6 @@ Fonctionnalités:
   * Mesure la temperature avec 2 sondes DS18B20
 
 A ajouter:
-  * Arrosage d'une certaine quantité d'eau, déclecnher en fonction de l'hygrométrie du sol
+  * Lumière Lune
+  * Mesure soil moisture sensor
+  * Arrosage d'une certaine quantité d'eau, en fonction du soil moisture sensor
