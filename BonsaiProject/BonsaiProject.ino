@@ -108,8 +108,9 @@ void printTemp()
 {
   Serial.print("Temp1: ");
   Serial.print(insideTemp);
-  Serial.print(" - Temp2: ");
-  Serial.println(outsideTemp);
+  Serial.print("°C - Temp2: ");
+  Serial.print(outsideTemp);
+  Serial.println("°C");
   
 }
 void printLight()
@@ -126,9 +127,8 @@ void printLight()
   Serial.print(heureOn);
   Serial.print("h");
   Serial.print(minuteOn);
-  Serial.print(":00 - off: ");
+  Serial.print(" - off: ");
   Serial.print(heureOff);
   Serial.print("h");
-  Serial.print(minuteOff);
-  Serial.println(":00");
+  Serial.println(minuteOff);
 }
