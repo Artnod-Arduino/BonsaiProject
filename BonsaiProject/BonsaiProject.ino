@@ -83,6 +83,7 @@ void loop ()
   // ***************** Running every sec ********************************
   if (now.second() != lastSec)
   {
+    sensors.requestTemperatures();
     insideTemp = sensors.getTempC(insideThermometer);
     outsideTemp = sensors.getTempC(outsideThermometer);
     light.run(now);
