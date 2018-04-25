@@ -5,20 +5,27 @@
 #include <DallasTemperature.h>
 #include <LordPwmTimer.h>
 
-// ### CUSTOM VALUE ###
+// Pins Assignment
+#define SOIL_PIN 0
+#define ONE_WIRE_BUS 4
+#define LIGHT_PIN 11
+
+// Time between measure
+#define TEMP_SECOND 15
+#define SOIL_SECOND 60
+
+// Light Settings
+#define PWM_TIME 60           // Nombre de seconde pour passer le pwm de 0 a 255
 #define TIMEZONE 2            // UTC france = +2
 const float LATITUDE = 43.70; // Nice = latitude = 43.7000000
 const float LONGITUDE = 7.25; // Nice = longitude = 7.250000
-#define PWM_TIME 60           // Nombre de seconde pour passer le pwm de 0 a 255
-#define LIGHT_PIN 11          // Broche utilise pour la lumiere
-#define ONE_WIRE_BUS 4        // Broche utilise pour les sondes DS18B20
 
-// ### CUSTOM DEBUG TEST ###
+// Debug
 #define TEST_DEBUG 0                // 1 = debug test actif, 0 = debug test inactif
 const int lordOn = (13 * 60) + 40;  // Ex 13h40
 const int lordOff = (13 * 60) + 43; // Ex 13h43
 
-// ### RTC ###
+// Clock
 RTC_DS1307 RTC;       // Instance DS1307 RTC
 DateTime now;         // Variable pour recuperer l'heure de l'horloge
 int DST = 0;          // Heure été/hiver
@@ -40,17 +47,41 @@ void changeDST(void)  // Changement automatique de l'heure été / hiver
   }
 }
 
-// ### DS18B20 ###
+// DS18B20
 #define TEMPERATURE_PRECISION 9
 OneWire oneWire(ONE_WIRE_BUS);        // Instance OneWire
 DallasTemperature sensors(&oneWire);  // Instance Dallas Temperature a partir de l'instance OneWire.
 DeviceAddress insideThermometer = { 0x28, 0xEB, 0x75, 0x2D, 0x9, 0x0, 0x0, 0x13 };    // adresses des sondes DS18B20
 DeviceAddress outsideThermometer = { 0x28, 0xFF, 0xC3, 0x20, 0xA8, 0x15, 0x1, 0xCA }; // adresses des sondes DS18B20
+unsigned long last_temperature = 0;   // heure de la dernière mesure
 float insideTemp = 0;                 // Variable pour recuperer la temperature
 float outsideTemp = 0;                // Variable pour recuperer la temperature
 
-// ### Light ###
+// Soil Moisture
+int soilMoisture = 0;         // Variable pour recuperer l'humidite du sol
+unsigned long last_soil = 0;  // heure de la dernière mesure
+
+// Objects
 LordPwmTimer light(LIGHT_PIN);
+
+// maesure sensors
+void measure()
+{
+  // DS18B20
+  if (now.unixtime() >= (last_temperature + TEMP_SECOND))
+  {
+    sensors.requestTemperatures();
+    insideTemp = sensors.getTempC(insideThermometer);
+    outsideTemp = sensors.getTempC(outsideThermometer);
+    last_temperature = now.unixtime();
+  }
+  // Soil Moisture
+  if (now.unixtime() >= (last_soil + SOIL_SECOND))
+  {
+    soilMoisture = analogRead(SOIL_PIN)/1023*100.0;
+    last_soil = now.unixtime();
+  }
+}
 
 // ### MAIN ###
 void setup ()
@@ -74,6 +105,9 @@ void setup ()
   sensors.setResolution(insideThermometer, TEMPERATURE_PRECISION);
   sensors.setResolution(outsideThermometer, TEMPERATURE_PRECISION);
 
+  // Initialize Soil Moisture
+  pinMode(SOIL_PIN, INPUT);
+  
   // Initialize light
   light.setLord(TIMEZONE, LATITUDE, LONGITUDE);
   light.setValue(LORDTIMER_PWM_TIME, PWM_TIME);
@@ -90,12 +124,9 @@ void loop ()
   // ***************** Running every sec *****************
   if (now.second() != lastSec)
   {
-    sensors.requestTemperatures();
-    insideTemp = sensors.getTempC(insideThermometer);
-    outsideTemp = sensors.getTempC(outsideThermometer);
+    measure();
     light.run(now);
     affichage();
-
     lastSec = now.second();
   }
 
@@ -112,7 +143,7 @@ void affichage(void)
 {
   Serial.println("####################");
   printTime();
-  printTemp();
+  printMeasure();
   printLight();
   if (TEST_DEBUG) printDebug();
 }
@@ -127,13 +158,15 @@ void printTime()
   if (now.second() < 10) Serial.print(0);
   Serial.println(now.second());
 }
-void printTemp()
+void printMeasure()
 {
-  Serial.print("Temp1: ");
+  Serial.print("T1: ");
   Serial.print(insideTemp);
-  Serial.print("°C - Temp2: ");
+  Serial.print("°C - T2: ");
   Serial.print(outsideTemp);
-  Serial.println("°C");
+  Serial.print("°C - Soil: ");
+  Serial.print(soilMoisture);
+  Serial.println("%");
 }
 void printLight()
 {
@@ -143,20 +176,20 @@ void printLight()
   int lordOff = light.getValue(LORDTIMER_OFF);
   int minuteOff = lordOff % 60;
   int heureOff = (lordOff - minuteOff) / 60;
-  Serial.print("pwm: ");
-  Serial.print(light.getPwm());
-  Serial.print(" - on: ");
+  Serial.print("On: ");
   if (heureOn < 10) Serial.print(0);
   Serial.print(heureOn);
   Serial.print("h");
   if (minuteOn < 10) Serial.print(0);
   Serial.print(minuteOn);
-  Serial.print(" - off: ");
+  Serial.print(" - Off: ");
   if (heureOff < 10) Serial.print(0);
   Serial.print(heureOff);
   Serial.print("h");
   if (minuteOff < 10) Serial.print(0);
-  Serial.println(minuteOff);
+  Serial.print(minuteOff);
+  Serial.print(" - Pwm: ");
+  Serial.println(light.getPwm());
 }
 void printDebug(void)
 {
