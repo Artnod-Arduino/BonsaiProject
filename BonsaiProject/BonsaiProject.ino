@@ -189,7 +189,8 @@ void printLight()
   if (minuteOff < 10) Serial.print(0);
   Serial.print(minuteOff);
   Serial.print(" - Pwm: ");
-  Serial.println(light.getPwm());
+  Serial.print(light.getPwm()/255*100);
+  Serial.println("%");
 }
 void printDebug(void)
 {
