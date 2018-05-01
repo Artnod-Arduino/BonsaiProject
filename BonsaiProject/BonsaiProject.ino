@@ -6,24 +6,24 @@
 #include <LordPwmTimer.h>
 
 // Pins Assignment
-#define SOIL_PIN 0
+#define SOIL_PIN A0
 #define ONE_WIRE_BUS 4
 #define LIGHT_PIN 11
 
 // Time between measure
-#define TEMP_SECOND 15
+#define TEMP_SECOND 5
 #define SOIL_SECOND 60
 
 // Light Settings
-#define PWM_TIME 60           // Nombre de seconde pour passer le pwm de 0 a 255
+#define PWM_TIME 255          // Nombre de seconde pour passer le pwm de 0 a 255
 #define TIMEZONE 2            // UTC france = +2
 const float LATITUDE = 43.70; // Nice = latitude = 43.7000000
 const float LONGITUDE = 7.25; // Nice = longitude = 7.250000
 
 // Debug
 #define TEST_DEBUG 0                // 1 = debug test actif, 0 = debug test inactif
-const int lordOn = (13 * 60) + 40;  // Ex 13h40
-const int lordOff = (13 * 60) + 43; // Ex 13h43
+const int lordOn = (16 * 60) + 24;   // Ex 13h40
+const int lordOff = (16 * 60) + 50;  // Ex 13h43
 
 // Clock
 RTC_DS1307 RTC;       // Instance DS1307 RTC
@@ -48,7 +48,7 @@ void changeDST(void)  // Changement automatique de l'heure été / hiver
 }
 
 // DS18B20
-#define TEMPERATURE_PRECISION 9
+#define TEMPERATURE_PRECISION 12
 OneWire oneWire(ONE_WIRE_BUS);        // Instance OneWire
 DallasTemperature sensors(&oneWire);  // Instance Dallas Temperature a partir de l'instance OneWire.
 DeviceAddress insideThermometer = { 0x28, 0xEB, 0x75, 0x2D, 0x9, 0x0, 0x0, 0x13 };    // adresses des sondes DS18B20
@@ -67,6 +67,8 @@ LordPwmTimer light(LIGHT_PIN);
 // maesure sensors
 void measure()
 {
+  // change dst time
+  changeDST();
   // DS18B20
   if (now.unixtime() >= (last_temperature + TEMP_SECOND))
   {
@@ -78,7 +80,7 @@ void measure()
   // Soil Moisture
   if (now.unixtime() >= (last_soil + SOIL_SECOND))
   {
-    soilMoisture = analogRead(SOIL_PIN)/1023*100.0;
+    soilMoisture = analogRead(SOIL_PIN);
     last_soil = now.unixtime();
   }
 }
@@ -105,9 +107,7 @@ void setup ()
   sensors.setResolution(insideThermometer, TEMPERATURE_PRECISION);
   sensors.setResolution(outsideThermometer, TEMPERATURE_PRECISION);
 
-  // Initialize Soil Moisture
-  pinMode(SOIL_PIN, INPUT);
-  
+
   // Initialize light
   light.setLord(TIMEZONE, LATITUDE, LONGITUDE);
   light.setValue(LORDTIMER_PWM_TIME, PWM_TIME);
@@ -117,19 +117,12 @@ void setup ()
 int lastSec = 0;
 void loop ()
 {
-  // ***************** Recuperation de l'heure *****************
-  now = RTC.now(); //get time from RTC
-  changeDST(); // changement automatique de l'heure été / hiver
-
-  // ***************** Running every sec *****************
-  if (now.second() != lastSec)
-  {
-    measure();
-    light.run(now);
-    affichage();
-    lastSec = now.second();
-  }
-
+  now = RTC.now();
+  
+  measure();
+  light.run(now);
+  affichage();
+  lastSec = now.second();
   // ***************** CUSTOM DEBUG TEST *****************
   if (TEST_DEBUG)
   {
@@ -141,11 +134,14 @@ void loop ()
 // ### Affichage ###
 void affichage(void)
 {
-  Serial.println("####################");
-  printTime();
-  printMeasure();
-  printLight();
-  if (TEST_DEBUG) printDebug();
+  if (now.second() != lastSec)
+  {
+    Serial.println("####################");
+    printTime();
+    printMeasure();
+    printLight();
+    if (TEST_DEBUG) printDebug();
+  }
 }
 void printTime()
 {
@@ -165,8 +161,7 @@ void printMeasure()
   Serial.print("°C - T2: ");
   Serial.print(outsideTemp);
   Serial.print("°C - Soil: ");
-  Serial.print(soilMoisture);
-  Serial.println("%");
+  Serial.println(soilMoisture);
 }
 void printLight()
 {
@@ -189,17 +184,16 @@ void printLight()
   if (minuteOff < 10) Serial.print(0);
   Serial.print(minuteOff);
   Serial.print(" - Pwm: ");
-  Serial.print(light.getPwm()/255*100);
-  Serial.println("%");
+  Serial.println(light.getPwm());
 }
 void printDebug(void)
 {
   Serial.println("--------------------");
   unsigned long timeSec = (unsigned long)(now.hour()) * 3600 + (now.minute() * 60) + now.second();
   unsigned long startOn = (unsigned long)(light.getValue(LORDTIMER_ON)) * 60;
-  unsigned long endOn = ((unsigned long)(light.getValue(LORDTIMER_ON)) * 60) + light.getValue(LORDTIMER_PWM_TIME);
-  unsigned long startOff = ((unsigned long)(light.getValue(LORDTIMER_OFF)) * 60) - light.getValue(LORDTIMER_PWM_TIME);
-  unsigned long endOff = (unsigned long)(light.getValue(LORDTIMER_OFF)) * 60;
+  unsigned long endOn = startOn + light.getValue(LORDTIMER_PWM_TIME);
+  unsigned long startOff = (unsigned long)(light.getValue(LORDTIMER_OFF)) * 60;
+  unsigned long endOff = startOff + light.getValue(LORDTIMER_PWM_TIME);
   Serial.print(timeSec);
   Serial.print(" - ");
   Serial.print(startOn);
@@ -210,9 +204,9 @@ void printDebug(void)
   Serial.print(" - ");
   Serial.println(endOff);
   if (timeSec < startOn) Serial.println("before sunrise");
-  else if ((timeSec >= startOn) && (timeSec < endOn)) Serial.println("running sunrise");
-  else if ((timeSec >= endOn) && (timeSec < startOff)) Serial.println("between sunrise and sunset");
-  else if ((timeSec >= startOff) && (timeSec < endOff)) Serial.println("running sunset");
+  else if ((timeSec >= startOn) && (timeSec <= endOn)) Serial.println("running sunrise");
+  else if ((timeSec > endOn) && (timeSec < startOff)) Serial.println("between sunrise and sunset");
+  else if ((timeSec >= startOff) && (timeSec <= endOff)) Serial.println("running sunset");
   else if (timeSec > endOff) Serial.println("after sunset");
 }
 
