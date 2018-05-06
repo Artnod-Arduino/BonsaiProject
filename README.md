@@ -15,3 +15,4 @@ Fonctionnalités:
 A ajouter:
   * Lumière Lune
   * Arrosage d'une certaine quantité d'eau, en fonction de l'humidité du sol
+  * Menu saisi
