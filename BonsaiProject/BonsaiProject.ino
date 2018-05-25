@@ -3,33 +3,44 @@
 #include <RTClib.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <LordPwmTimer.h>
+
+#include <LordLedPanel.h>
+#include <Rainer.h>
 
 // Pins Assignment
-#define SOIL_PIN A0
-#define ONE_WIRE_BUS 4
-#define LIGHT_PIN 11
+#define SOIL_PIN A2
+#define LIGHT_PIN 10
+#define FAN_PIN 11
+#define RAIN_PIN 12
+#define ONE_WIRE_BUS 13
 
 // Time between measure
 #define TEMP_SECOND 5
 #define SOIL_SECOND 60
 
-// Light Settings
-#define PWM_TIME 255          // Nombre de seconde pour passer le pwm de 0 a 255
-#define TIMEZONE 2            // UTC france = +2
-const float LATITUDE = 43.70; // Nice = latitude = 43.7000000
-const float LONGITUDE = 7.25; // Nice = longitude = 7.250000
+// LordLedPannel Settings
+#define PWM_TIME    60          // Nombre de seconde pour passer le pwm de 0 a 255
+#define MAX_TEMP    60          // temperature max
+#define TEMP_MARGE  15          // marge temperature pour reallumer apres arret d'urgence
+#define TIMEZONE    2           // UTC france = +2
+const float LATITUDE =  43.70;  // Nice = latitude = 43.7000000
+const float LONGITUDE = 7.25;   // Nice = longitude = 7.250000
 
-// Debug
-#define TEST_DEBUG 0                // 1 = debug test actif, 0 = debug test inactif
-const int lordOn = (16 * 60) + 24;   // Ex 13h40
-const int lordOff = (16 * 60) + 50;  // Ex 13h43
+// Rainer Settings
+#define SOIL_MIN    60          // valeur min pour le declenchement de l'arrosage
+#define RAIN_TIME   15          // duree du l'arrosage en sec
+#define RAIN_BREAK  3600        // duree min entre 2 arrosages en sec
+
+// Debug Settings
+#define TEST_DEBUG 1                  // 1 = debug test actif, 0 = debug test inactif
+const int lordOn = (16 * 60) + 17;   // Ex 13h40
+const int lordOff = (16 * 60) + 20;  // Ex 13h43
 
 // Clock
 RTC_DS1307 RTC;       // Instance DS1307 RTC
 DateTime now;         // Variable pour recuperer l'heure de l'horloge
 int DST = 0;          // Heure été/hiver
-void changeDST(void)  // Changement automatique de l'heure été / hiver
+void changeDST(void)  // Changement automatique de l'heure été / hiver  --- A refaire ---
 {
   if (now.dayOfTheWeek() == 0 && now.month() == 3 && now.day() >= 25 && now.day() <= 31 && now.hour() == 2 && now.minute() == 0 && now.second() == 0 && DST == 0)
   {
@@ -62,13 +73,42 @@ int soilMoisture = 0;         // Variable pour recuperer l'humidite du sol
 unsigned long last_soil = 0;  // heure de la dernière mesure
 
 // Objects
-LordPwmTimer light(LIGHT_PIN);
+LordLedPanel light(LIGHT_PIN, FAN_PIN);
+Rainer arrosage(RAIN_PIN);
 
-// maesure sensors
+// ### MAIN ###
+void initObject()
+{
+  // Initialize DST
+  EEPROM.get(0, DST);
+  if (DST != 0 && DST != 1)
+  {
+    DST = 1;
+    EEPROM.put(0, DST);
+  }
+
+  // Initialize light
+  light.setValue(LORD_LED_PWM_TIME, PWM_TIME);
+  light.setValue(LORD_LED_TEMP, MAX_TEMP);
+  light.setValue(LORD_LED_MARGE, TEMP_MARGE);
+  light.setValue(LORD_LED_TZ, TIMEZONE);
+  light.setValue(LORD_LED_LAT, LATITUDE);
+  light.setValue(LORD_LED_LON, LONGITUDE);
+  light.setLord();
+  light.enable();
+
+  // Initialze rainer
+  arrosage.setValue(RAINER_MIN,   SOIL_MIN);
+  arrosage.setValue(RAINER_TIME,  RAIN_TIME);
+  arrosage.setValue(RAINER_BREAK, RAIN_BREAK);
+  arrosage.enable();
+}
 void measure()
 {
-  // change dst time
+  // get time
+  now = RTC.now();
   changeDST();
+
   // DS18B20
   if (now.unixtime() >= (last_temperature + TEMP_SECOND))
   {
@@ -77,6 +117,7 @@ void measure()
     outsideTemp = sensors.getTempC(outsideThermometer);
     last_temperature = now.unixtime();
   }
+
   // Soil Moisture
   if (now.unixtime() >= (last_soil + SOIL_SECOND))
   {
@@ -84,8 +125,21 @@ void measure()
     last_soil = now.unixtime();
   }
 }
+void runObject()
+{
+  light.run(now, soilMoisture);
+  arrosage.run(now.unixtime(), soilMoisture);
+}
+void runDebug()
+{
+  if (TEST_DEBUG)
+  {
+    light.setValue(LORD_LED_ON, lordOn);
+    light.setValue(LORD_LED_OFF, lordOff);
+  }
+}
+int lastSec = 0;
 
-// ### MAIN ###
 void setup ()
 {
   // affichage temporaire en Serial
@@ -96,39 +150,23 @@ void setup ()
   Wire.begin(); //start I2C interface
   RTC.begin(); //start RTC interface
   if (! RTC.isrunning()) RTC.adjust(DateTime(__DATE__, __TIME__));
-  EEPROM.get(0, DST);
-  if (DST != 0 && DST != 1)
-  {
-    DST = 1;
-    EEPROM.put(0, DST);
-  }
 
   // Initialize DS18B20
   sensors.setResolution(insideThermometer, TEMPERATURE_PRECISION);
   sensors.setResolution(outsideThermometer, TEMPERATURE_PRECISION);
 
+  // Initialize SOIL Moisture
+  pinMode(SOIL_PIN, INPUT);
 
-  // Initialize light
-  light.setLord(TIMEZONE, LATITUDE, LONGITUDE);
-  light.setValue(LORDTIMER_PWM_TIME, PWM_TIME);
-  light.enable();
+  initObject();
 }
-
-int lastSec = 0;
 void loop ()
 {
-  now = RTC.now();
-  
   measure();
-  light.run(now);
+  runObject();
   affichage();
   lastSec = now.second();
-  // ***************** CUSTOM DEBUG TEST *****************
-  if (TEST_DEBUG)
-  {
-    light.setValue(LORDTIMER_ON, lordOn);
-    light.setValue(LORDTIMER_OFF, lordOff);
-  }
+  runDebug();
 }
 
 // ### Affichage ###
@@ -141,6 +179,7 @@ void affichage(void)
     printMeasure();
     printLight();
     if (TEST_DEBUG) printDebug();
+    printArrosage();
   }
 }
 void printTime()
@@ -165,13 +204,13 @@ void printMeasure()
 }
 void printLight()
 {
-  int lordOn = light.getValue(LORDTIMER_ON);
+  int lordOn = light.getValue(LORD_LED_ON);
   int minuteOn = lordOn % 60;
   int heureOn = (lordOn - minuteOn) / 60;
-  int lordOff = light.getValue(LORDTIMER_OFF);
+  int lordOff = light.getValue(LORD_LED_OFF);
   int minuteOff = lordOff % 60;
   int heureOff = (lordOff - minuteOff) / 60;
-  Serial.print("On: ");
+  Serial.print("-Lumiere- On: ");
   if (heureOn < 10) Serial.print(0);
   Serial.print(heureOn);
   Serial.print("h");
@@ -190,10 +229,10 @@ void printDebug(void)
 {
   Serial.println("--------------------");
   unsigned long timeSec = (unsigned long)(now.hour()) * 3600 + (now.minute() * 60) + now.second();
-  unsigned long startOn = (unsigned long)(light.getValue(LORDTIMER_ON)) * 60;
-  unsigned long endOn = startOn + light.getValue(LORDTIMER_PWM_TIME);
-  unsigned long startOff = (unsigned long)(light.getValue(LORDTIMER_OFF)) * 60;
-  unsigned long endOff = startOff + light.getValue(LORDTIMER_PWM_TIME);
+  unsigned long startOn = (unsigned long)(light.getValue(LORD_LED_ON)) * 60;
+  unsigned long endOn = startOn + light.getValue(LORD_LED_PWM_TIME);
+  unsigned long startOff = (unsigned long)(light.getValue(LORD_LED_OFF)) * 60;
+  unsigned long endOff = startOff + light.getValue(LORD_LED_PWM_TIME);
   Serial.print(timeSec);
   Serial.print(" - ");
   Serial.print(startOn);
@@ -208,5 +247,12 @@ void printDebug(void)
   else if ((timeSec > endOn) && (timeSec < startOff)) Serial.println("between sunrise and sunset");
   else if ((timeSec >= startOff) && (timeSec <= endOff)) Serial.println("running sunset");
   else if (timeSec > endOff) Serial.println("after sunset");
+  Serial.println("--------------------");
 }
-
+void printArrosage()
+{
+  Serial.print("-Arrosage: ");
+  Serial.print(arrosage.isWorking()?"On":"Off");
+  Serial.print(" - limite: ");
+  Serial.println(arrosage.getValue(RAINER_MIN));
+}
